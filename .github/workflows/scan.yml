@@ -247,30 +247,9 @@ jobs:
               return m ? m[1].trim() : null;
             };
 
-            // ── No issues found at all: auto-close everything ─────────────
+            // ── No issues found ─────────────────────────────────────────
             if (issueBlocks.length === 0) {
-              console.log('No issues found — code is clean. Closing all open AI issues.');
-              const existing = await github.rest.issues.listForRepo({
-                owner: context.repo.owner,
-                repo:  context.repo.repo,
-                state: 'open',
-                labels: 'flutter-ai-analysis',
-                per_page: 100,
-              });
-              for (const issue of existing.data) {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo:  context.repo.repo,
-                  issue_number: issue.number,
-                  body: `✅ No issues detected in the latest scan on \`${commitSha}\`. Code looks clean — closing automatically.\n\n_Scanned by ${provider}_`,
-                });
-                await github.rest.issues.update({
-                  owner: context.repo.owner,
-                  repo:  context.repo.repo,
-                  issue_number: issue.number,
-                  state: 'closed',
-                });
-              }
+              console.log('No issues found — code is clean.');
               return;
             }
 
@@ -320,34 +299,7 @@ jobs:
             // New scan fingerprints
             const newFingerprints = new Set(parsed.map(p => p.fingerprint));
 
-            // ── Step 1: Flag issues not seen in this scan (don't auto-close)
-            // Only leave a comment so the developer can verify and close manually
-            for (const [fp, openIssue] of openFingerprints) {
-              if (!newFingerprints.has(fp)) {
-                // Check if we already left a "not detected" comment recently
-                // to avoid spamming the same comment on every push
-                const comments = await github.rest.issues.listComments({
-                  owner: context.repo.owner,
-                  repo:  context.repo.repo,
-                  issue_number: openIssue.number,
-                  per_page: 10,
-                });
-                const alreadyFlagged = comments.data.some(c =>
-                  c.body.includes('not detected in the latest scan')
-                );
-                if (!alreadyFlagged) {
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo:  context.repo.repo,
-                    issue_number: openIssue.number,
-                    body: `⚠️ This issue was **not detected** in the latest scan on \`${commitSha}\`.\n\nPlease verify if the problem is actually fixed and close this issue manually if resolved.\n\n_Scanned by ${provider}_`,
-                  });
-                  console.log(`Flagged for manual review: ${openIssue.title}`);
-                } else {
-                  console.log(`Already flagged, skipping comment: ${openIssue.title}`);
-                }
-              }
-            }
+
 
             // ── Step 2: Create new issues, skip if fingerprint already open
             let created = 0;
@@ -399,7 +351,7 @@ jobs:
                 `---`,
                 ``,
                 `### ✅ How to close this`,
-                `Fix the problem above and push to main. The next scan will flag this issue for manual review if it no longer detects the problem. You can then close it manually.`,
+                `Fix the problem above and close this issue manually once resolved.`,
                 ``,
                 `_Generated: ${new Date().toUTCString()}_`,
               ].join('\n');
