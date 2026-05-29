@@ -65,7 +65,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                language['name']!,
+                                language['name'] ?? '',
                                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                       fontWeight: FontWeight.w600,
                                     ),
