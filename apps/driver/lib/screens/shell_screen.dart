@@ -139,9 +139,14 @@ class _ShellScreenState extends State<ShellScreen> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
-          decoration: const BoxDecoration(
-            color: TruxifyColors.secondaryBackground,
-            border: Border(top: BorderSide(color: TruxifyColors.border)),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+                top: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? TruxifyColors.darkBorder
+                  : TruxifyColors.border,
+            )),
           ),
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
           child: ValueListenableBuilder<int>(

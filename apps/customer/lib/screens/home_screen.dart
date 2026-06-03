@@ -1,7 +1,10 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../controllers/app_controller.dart';
+import '../core/offline/cache/cache_manager.dart';
 import '../data/mock_data.dart';
 import '../models/app_models.dart';
 import '../theme/app_theme.dart';
@@ -11,9 +14,41 @@ import '../widgets/shipment_card.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/recent_route_card.dart';
 import 'live_tracking_screen.dart';
+import 'notifications_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final CacheManager _cacheManager = CacheManager();
+  bool _isOffline = false;
+  String _locationLabel = 'Surat, Gujarat';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocation();
+  }
+
+  Future<void> _loadLocation() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    final hasNetwork = connectivity != ConnectivityResult.none;
+    await _cacheManager.open();
+    await _cacheManager.cacheLastLocation(21.1702, 72.8311);
+    final cachedLocation = await _cacheManager.getLastLocation();
+    if (!mounted) return;
+
+    setState(() {
+      _isOffline = !hasNetwork;
+      if (cachedLocation != null) {
+        _locationLabel = 'Last truck location • ${cachedLocation['latitude']?.toStringAsFixed(3)}, ${cachedLocation['longitude']?.toStringAsFixed(3)}';
+      }
+    });
+  }
 
   static String _greetingFor(DateTime time) {
     final hour = time.hour;
@@ -42,8 +77,9 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = FreightFairScope.of(context);
+    final controller = TruxifyScope.of(context);
     final now = DateTime.now();
+    final customerFirstName = mockCustomerName.split(' ').first;
     final greeting = _greetingFor(now);
 
     return Scaffold(
@@ -60,22 +96,24 @@ class HomeScreen extends StatelessWidget {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: Theme.of(context).brightness == Brightness.dark ? FreightFairColors.darkBorder : FreightFairColors.border,
+                    color: Theme.of(context).brightness == Brightness.dark ? TruxifyColors.darkBorder : TruxifyColors.border,
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.place_rounded, size: 16, color: FreightFairColors.accentDark),
-                    SizedBox(width: 6),
-                    Text('Surat, Gujarat', style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Icon(Icons.place_rounded, size: 16, color: TruxifyColors.accentDark),
+                    const SizedBox(width: 6),
+                    Text(_isOffline ? _locationLabel : 'Surat, Gujarat', style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
             ),
           ),
           IconButton(
-            onPressed: () => _showComingSoon(context, 'Notifications'),
+            onPressed: () => Navigator.of(context).push(
+              AppPageRoute(builder: (_) => const NotificationsScreen()),
+            ),
             icon: const Icon(Icons.notifications_none_rounded),
           ),
         ],
@@ -85,11 +123,11 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$greeting, Karthik 👋', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+            Text('$greeting, $customerFirstName 👋', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             Text(
               DateFormat('EEEE, d MMMM yyyy').format(now),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: FreightFairColors.adaptiveSecondaryText(context)),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: TruxifyColors.adaptiveSecondaryText(context)),
             ),
             const SizedBox(height: 26),
             SectionHeader(title: 'Active Shipments', actionLabel: 'See all', onActionTap: () => _showComingSoon(context, 'All shipments')),
@@ -106,7 +144,7 @@ class HomeScreen extends StatelessWidget {
                     shipment: shipment,
                     onTap: () {
                       Navigator.of(context).push(
-                        AppPageRoute(builder: (_) => LiveTrackingScreen(orderId: index == 0 ? '#FF20241205' : '#FF20241198')),
+                        AppPageRoute(builder: (_) => LiveTrackingScreen(orderId: mockActiveOrders[index].orderId)),
                       );
                     },
                   );
