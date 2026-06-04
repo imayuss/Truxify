@@ -35,6 +35,10 @@ export function initWebSocketServer(server) {
     const bypassAuth = process.env.BYPASS_AUTH === 'true';
 
     if (bypassAuth) {
+      if (process.env.NODE_ENV === 'production') {
+        ws.close(4003, 'BYPASS_AUTH is not allowed in production');
+        return;
+      }
       ws.driverId = reqUrl.searchParams.get('driver_id') || 'test_driver';
       console.log(`🔓 WS Auth bypassed for driver: ${ws.driverId}`);
     } else {
