@@ -672,7 +672,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          border:
+              Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.01),
@@ -716,6 +717,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
   }
 
   Widget _buildHeatmapCalendarCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // Days in current selection
     final DateTime firstDay = DateTime(_currentYear, _currentMonth, 1);
     final int firstWeekday = firstDay.weekday; // 1 = Mon, 7 = Sun
@@ -733,7 +735,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: isDark
+                ? Colors.black.withOpacity(0.25)
+                : Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -771,7 +775,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 children: [
                   IconButton(
                     onPressed: _prevMonth,
-                    icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                    icon: Icon(
+                      Icons.chevron_left_rounded,
+                      size: 20,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.black
+                          : Colors.white,
+                    ),
                     visualDensity: VisualDensity.compact,
                     style: IconButton.styleFrom(
                       backgroundColor: TruxifyColors.accentVeryLight,
@@ -789,7 +799,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: _nextMonth,
-                    icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                    icon: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.black
+                          : Colors.white,
+                    ),
                     visualDensity: VisualDensity.compact,
                     style: IconButton.styleFrom(
                       backgroundColor: TruxifyColors.accentVeryLight,
@@ -848,7 +864,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
               }
 
               // Determine color based on earnings magnitude relative to max ₹8,400
-              Color cellBgColor = Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3);
+              Color cellBgColor = isDark
+                  ? TruxifyColors.darkBorder.withOpacity(0.5)
+                  : Theme.of(context)
+                      .colorScheme
+                      .outlineVariant
+                      .withOpacity(0.3);
               Color textColor = Theme.of(context).colorScheme.onSurface;
               FontWeight textWeight = FontWeight.normal;
 
@@ -863,12 +884,17 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   textColor = Colors.white;
                   textWeight = FontWeight.bold;
                 } else {
-                  textColor = TruxifyColors.accentDark;
+                  textColor = isDark
+                      ? TruxifyColors.darkPrimaryText
+                      : TruxifyColors.accentDark;
                   textWeight = FontWeight.w600;
                 }
               } else if (_dailyData.containsKey(cellKey) && earnings == 0.0) {
                 // Cancelled day (grey card outline style)
-                cellBgColor = Theme.of(context).colorScheme.outlineVariant.withOpacity(0.6);
+                cellBgColor = Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withOpacity(0.6);
                 textColor = TruxifyColors.adaptiveSecondaryText(context);
               }
 
@@ -929,7 +955,14 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 ),
               ),
               const SizedBox(width: 4),
-              _buildLegendBox(Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3)),
+              _buildLegendBox(
+                isDark
+                    ? TruxifyColors.darkBorder.withOpacity(0.5)
+                    : Theme.of(context)
+                        .colorScheme
+                        .outlineVariant
+                        .withOpacity(0.3),
+              ),
               const SizedBox(width: 2),
               _buildLegendBox(TruxifyColors.accent.withOpacity(0.2)),
               const SizedBox(width: 2),
@@ -1064,9 +1097,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.3),
+                  color: Theme.of(context)
+                      .scaffoldBackgroundColor
+                      .withOpacity(0.3),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                  border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1095,7 +1131,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                 style: GoogleFonts.dmSans(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -1103,7 +1140,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                 trip['customer'] as String,
                                 style: GoogleFonts.dmSans(
                                   fontSize: 12,
-                                  color: TruxifyColors.adaptiveSecondaryText(context),
+                                  color: TruxifyColors.adaptiveSecondaryText(
+                                      context),
                                 ),
                               ),
                             ],
@@ -1122,7 +1160,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
                     if (trip['verified'] == true) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Divider(color: Theme.of(context).colorScheme.outlineVariant, height: 1),
+                        child: Divider(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                            height: 1),
                       ),
                       Row(
                         children: [
@@ -1139,7 +1179,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.dmSans(
                                   fontSize: 10,
-                                  color: TruxifyColors.adaptiveSecondaryText(context),
+                                  color: TruxifyColors.adaptiveSecondaryText(
+                                      context),
                                   fontWeight: FontWeight.w500),
                             ),
                           ),
