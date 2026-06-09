@@ -39,6 +39,14 @@ vi.mock('../../src/services/osrm.js', () => ({
   getRouteEstimate: routeEstimateMock,
 }));
 
+// Mock reputation service so tests never hit a real blockchain node.
+// awardReputationPointsMock is a vi.fn() the tests can inspect and configure.
+const awardReputationPointsMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../src/services/reputation.js', () => ({
+  reputationContract: {},
+  awardReputationPoints: awardReputationPointsMock,
+}));
+
 const { default: orderRouter } = await import('../../src/routes/orderRoutes.js');
 const { computeOrderPricing } = await import('../../src/lib/pricing.js');
 import express from 'express';
@@ -1064,5 +1072,61 @@ describe('POST /api/orders/:id/ratings — delivered order reputation flow', () 
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Validation failed');
+  });
+
+  it('triggers on-chain reputation update when driver has a polygon_wallet_address', async () => {
+    awardReputationPointsMock.mockClear();
+    m.store.orders = [{
+      id: 'order-1',
+      order_display_id: 'ORD-1',
+      customer_id: CUSTOMER_HEADERS['x-user-id'],
+      driver_id: 'driver-123',
+      status: 'payment_released',
+    }];
+    m.store.driver_details = [{
+      user_id: 'driver-123',
+      polygon_wallet_address: '0xAbCd1234567890abcdef1234567890abcdef1234',
+    }];
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/orders/order-1/ratings')
+      .set(CUSTOMER_HEADERS)
+      .send({ stars: 4, comment: 'Good job' });
+
+    expect(res.status).toBe(201);
+    // Give the fire-and-forget promise a tick to resolve.
+    await new Promise(r => setTimeout(r, 0));
+    expect(awardReputationPointsMock).toHaveBeenCalledOnce();
+    expect(awardReputationPointsMock).toHaveBeenCalledWith(
+      '0xAbCd1234567890abcdef1234567890abcdef1234',
+      4
+    );
+  });
+
+  it('skips on-chain update when driver has no polygon_wallet_address', async () => {
+    awardReputationPointsMock.mockClear();
+    m.store.orders = [{
+      id: 'order-1',
+      order_display_id: 'ORD-1',
+      customer_id: CUSTOMER_HEADERS['x-user-id'],
+      driver_id: 'driver-no-wallet',
+      status: 'payment_released',
+    }];
+    m.store.driver_details = [{
+      user_id: 'driver-no-wallet',
+      polygon_wallet_address: null,
+    }];
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/orders/order-1/ratings')
+      .set(CUSTOMER_HEADERS)
+      .send({ stars: 3 });
+
+    expect(res.status).toBe(201);
+    await new Promise(r => setTimeout(r, 0));
+    // Rating saved off-chain; blockchain skipped gracefully.
+    expect(awardReputationPointsMock).not.toHaveBeenCalled();
   });
 });

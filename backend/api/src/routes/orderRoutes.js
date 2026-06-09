@@ -5,6 +5,7 @@ import { validateBody } from '../middleware/validate.js';
 import { computeOrderPricing } from '../lib/pricing.js';
 import { getRouteEstimate } from '../services/osrm.js';
 import { createOrderSchema, submitBidSchema, submitRatingSchema } from '../validation/requestSchemas.js';
+import { awardReputationPoints } from '../services/reputation.js';
 
 const router = express.Router();
 
@@ -421,6 +422,28 @@ router.post('/:id/ratings', authenticate, requireRole(['customer']), validateBod
 
     if (rpcErr) {
       return res.status(500).json({ error: 'Failed to submit rating.', details: rpcErr.message });
+    }
+
+    // Fetch driver's registered Polygon wallet address for on-chain reputation update.
+    // This is intentionally fire-and-forget — a blockchain failure must never block
+    // the HTTP response. The Supabase rating is the source of truth.
+    const { data: driverDetails } = await supabase
+      .from('driver_details')
+      .select('polygon_wallet_address')
+      .eq('user_id', order.driver_id)
+      .maybeSingle();
+
+    const polygonAddress = driverDetails?.polygon_wallet_address ?? null;
+
+    if (polygonAddress) {
+      // Non-blocking — do not await on the critical response path.
+      awardReputationPoints(polygonAddress, stars).catch(err =>
+        console.error('[reputation] Unhandled rejection in awardReputationPoints:', err.message)
+      );
+    } else {
+      console.warn(
+        `[reputation] Driver ${order.driver_id} has no polygon_wallet_address — skipping on-chain update.`
+      );
     }
 
     return res.status(201).json({
