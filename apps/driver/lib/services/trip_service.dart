@@ -87,14 +87,14 @@ class TripService {
   ) async {
     await _verifyTripOwnership(tripDisplayId);
 
-    await _client
-        .from('trip_stops')
-        .update({
-          'is_completed': true,
-          'is_current': false,
-        })
-        .eq('id', stopId)
-        .eq('trip_display_id', tripDisplayId);
+    final updatedStop = await _client.from('trip_stops').update({
+      'is_completed': true,
+      'is_current': false,
+    }).eq('id', stopId).eq('trip_display_id', tripDisplayId).select().maybeSingle();
+
+    if (updatedStop == null) {
+      throw Exception('Stop not found or does not belong to this trip');
+    }
 
     final nextStops = await _client
         .from('trip_stops')
