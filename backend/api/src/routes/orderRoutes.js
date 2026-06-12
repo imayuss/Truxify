@@ -625,6 +625,7 @@ router.put('/:id/change-drop', authenticate, requireRole(['customer']), validate
     if (orderErr) return res.status(500).json({ error: 'Failed to fetch order.', details: orderErr.message });
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
+    if (order.weight_tonnes == null) return res.status(500).json({ error: 'Data inconsistency: Order is missing weight_tonnes.' });
 
     // Recalculate pricing based on new drop location
     let pricing;
@@ -641,7 +642,7 @@ router.put('/:id/change-drop', authenticate, requireRole(['customer']), validate
         pickupLng:  Number(order.pickup_lng),
         dropLat:    Number(drop_lat),
         dropLng:    Number(drop_lng),
-        weightTonnes: Number(order.weight_tonnes || 0),
+        weightTonnes: Number(order.weight_tonnes),
         roadDistanceKm: routeEstimate?.distanceKm,
         isFragile:   Boolean(order.is_fragile),
         isStackable: Boolean(order.is_stackable),
@@ -705,7 +706,7 @@ router.post('/:id/cancel', authenticate, requireRole(['customer']), validatePara
       return res.status(400).json({ error: 'Order cannot be cancelled after delivery or payment release.' });
     }
 
-    const { data: updatedOrder, error: updateErr } = await supabase.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('order_display_id', orderId).select('cancellation_fee, order_display_id, status').single();
+    const { data: updatedOrder, error: updateErr } = await supabase.from('orders').update({ status: 'cancelled', cancellation_reason: reason, updated_at: new Date().toISOString() }).eq('order_display_id', orderId).select('cancellation_fee, order_display_id, status, cancellation_reason').single();
     if (updateErr) return res.status(500).json({ error: 'Failed to cancel order.', details: updateErr.message });
 
     const cancellationFee = updatedOrder?.cancellation_fee ?? 0;
