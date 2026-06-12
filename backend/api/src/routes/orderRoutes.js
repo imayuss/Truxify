@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
+import { ethers } from 'ethers';
 import { supabase } from '../config/db.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
@@ -17,6 +18,7 @@ import {
 } from '../validation/requestSchemas.js';
 import { changeDropSchema, cancelOrderSchema } from '../validation/requestSchemas.js';
 import { awardReputationPoints } from '../services/reputation.js';
+import { escrowDeposit, escrowRelease, escrowRefund } from '../services/escrow.js';
 import { sendDeliveryOtpNotification } from '../services/notificationService.js';
 import { predictDemand } from '../services/ml.js';
 import rateLimit from 'express-rate-limit';
@@ -481,6 +483,46 @@ router.post('/:id/bids/:bidId/accept', authenticate, requireRole(['customer']), 
 
     if (rpcErr) return res.status(500).json({ error: 'Failed to accept bid atomically.', details: rpcErr.message });
 
+    // Fetch driver's Polygon wallet address for escrow deposit
+    const { data: driverDetails } = await supabase
+      .from('driver_details')
+      .select('polygon_wallet_address')
+      .eq('user_id', bid.driver_id)
+      .maybeSingle();
+
+    const driverWallet = driverDetails?.polygon_wallet_address ?? null;
+    if (driverWallet) {
+      const amountWei = ethers.parseEther((bid.bid_amount / 100).toFixed(2).toString());
+      escrowDeposit(order.order_display_id, driverWallet, amountWei).then(({ txHash }) => {
+        if (txHash) {
+          supabase.from('orders').update({
+            escrow_status: 'funded',
+            deposit_tx_hash: txHash,
+            escrow_deposited_at: new Date().toISOString(),
+          }).eq('id', orderId).then(({ error: e }) => {
+            if (e) console.warn('[escrow] Failed to update deposit_tx_hash:', e.message);
+          });
+        }
+      }).catch(err =>
+        console.error('[escrow] Unhandled rejection in escrowDeposit:', err.message)
+      );
+    } else {
+      console.warn(`[escrow] Driver ${bid.driver_id} has no polygon_wallet_address — skipping escrow deposit.`);
+    }
+
+    // Update order with escrow booking reference
+    const { error: escrowUpdateErr } = await supabase
+      .from('orders')
+      .update({
+        escrow_booking_id: `escrow:${order.order_display_id}`,
+        escrow_status: 'funding',
+      })
+      .eq('id', orderId);
+
+    if (escrowUpdateErr) {
+      console.warn('[escrow] Failed to update escrow_booking_id:', escrowUpdateErr.message);
+    }
+
     res.json({ message: 'Bid accepted. Driver and truck assigned.' });
   } catch (err) {
     res.status(500).json({ error: 'Internal Server Error' });
@@ -602,6 +644,19 @@ router.post('/:id/verify-delivery', authenticate, requireRole(['driver']), verif
       console.warn('complete_trip_tx RPC call error:', rpcErr.message);
     }
 
+    // Escrow: release funds to driver after successful delivery verification
+    escrowRelease(order.order_display_id).then(({ txHash }) => {
+      if (txHash) {
+        supabase.from('orders').update({
+          escrow_status: 'released',
+          release_tx_hash: txHash,
+          escrow_released_at: new Date().toISOString(),
+        }).eq('id', orderId).then(({ error: e }) => {
+          if (e) console.warn('[escrow] Failed to update release_tx_hash:', e.message);
+        });
+      }
+    }).catch(err => console.error('[escrow] Unhandled rejection in escrowRelease:', err.message));
+
     // Strip delivery_otp from updatedOrder to prevent exposure
     const responseOrder = { ...updatedOrder };
     if (responseOrder.delivery_otp) {
@@ -628,7 +683,6 @@ router.put('/:id/change-drop', authenticate, requireRole(['customer']), validate
     if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
     if (order.weight_tonnes == null) return res.status(500).json({ error: 'Data inconsistency: Order is missing weight_tonnes.' });
 
-    // Recalculate pricing based on new drop location
     let pricing;
     try {
       const routeEstimate = await getRouteEstimate({
@@ -667,7 +721,6 @@ router.put('/:id/change-drop', authenticate, requireRole(['customer']), validate
     const { data: updatedOrder, error: updateErr } = await supabase.from('orders').update(updates).eq('order_display_id', orderId).select('*').single();
     if (updateErr) return res.status(500).json({ error: 'Failed to update order.', details: updateErr.message });
 
-    // Update timeline entry for change-drop if present (best-effort)
     try {
       await supabase.from('order_timeline').insert({ order_display_id: order.order_display_id, milestone: 'Drop Changed', milestone_time: new Date().toISOString(), completed: true, sort_order: 25 });
     } catch (timelineErr) {
@@ -691,7 +744,7 @@ router.put('/:id/change-drop', authenticate, requireRole(['customer']), validate
 });
 
 // ============================================================================
-// 11. CANCEL ORDER (CUSTOMER)
+// 11. CANCEL ORDER AND REFUND ESCROW (CUSTOMER)
 // ============================================================================
 router.post('/:id/cancel', authenticate, requireRole(['customer']), validateParams(paramIdSchema), validateBody(cancelOrderSchema), async (req, res) => {
   const orderId = req.params.id; // this is order_display_id from client
@@ -703,8 +756,9 @@ router.post('/:id/cancel', authenticate, requireRole(['customer']), validatePara
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
 
-    if (['delivered', 'payment_released'].includes(order.status)) {
-      return res.status(400).json({ error: 'Order cannot be cancelled after delivery or payment release.' });
+    const cancellableStatuses = ['pending', 'in_progress', 'truck_assigned', 'picked_up'];
+    if (!cancellableStatuses.includes(order.status)) {
+      return res.status(400).json({ error: `Order cannot be cancelled in status "${order.status}".` });
     }
 
     const { data: updatedOrder, error: updateErr } = await supabase.from('orders').update({ status: 'cancelled', cancellation_reason: reason, updated_at: new Date().toISOString() }).eq('order_display_id', orderId).select('cancellation_fee, order_display_id, status, cancellation_reason').single();
@@ -712,7 +766,25 @@ router.post('/:id/cancel', authenticate, requireRole(['customer']), validatePara
 
     const cancellationFee = updatedOrder?.cancellation_fee ?? 0;
 
-    return res.json({ message: 'Order cancelled successfully.', cancellation_fee: cancellationFee });
+    await supabase.from('order_timeline').update({ completed: true, milestone_time: new Date().toISOString() })
+      .eq('order_display_id', order.order_display_id)
+      .eq('milestone', 'Order Placed');
+
+    if (order.escrow_booking_id) {
+      escrowRefund(order.order_display_id).then(({ txHash }) => {
+        if (txHash) {
+          supabase.from('orders').update({
+            escrow_status: 'refunded',
+            refund_tx_hash: txHash,
+            escrow_refunded_at: new Date().toISOString(),
+          }).eq('order_display_id', orderId).then(({ error: e }) => {
+            if (e) console.warn('[escrow] Failed to update refund_tx_hash:', e.message);
+          });
+        }
+      }).catch(err => console.error('[escrow] Unhandled rejection in escrowRefund:', err.message));
+    }
+
+    return res.json({ message: 'Order cancelled successfully.', cancellation_fee: cancellationFee, order: updatedOrder });
   } catch (err) {
     console.error('Cancel order exception:', err.message);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -720,7 +792,7 @@ router.post('/:id/cancel', authenticate, requireRole(['customer']), validatePara
 });
 
 // ============================================================================
-// 9. PREDICT RIDE DEMAND (CUSTOMER OR DRIVER)
+// 12. PREDICT RIDE DEMAND (CUSTOMER OR DRIVER)
 // ============================================================================
 router.post('/predict-demand', authenticate, validateBody(predictDemandSchema), async (req, res) => {
   try {
