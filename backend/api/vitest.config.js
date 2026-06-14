@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
+    // Preserve symlinks so that testing in workspace directories containing special characters
+    // (like '#') using a directory symlink or junction resolves imports correctly without breaking.
     preserveSymlinks: true,
   },
   plugins: [

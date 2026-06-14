@@ -140,9 +140,9 @@ export async function authenticate(req, res, next) {
       phone: userProfile.phone
     };
 
-    // Populate cache on successful DB fetch
+    // Populate cache on successful DB fetch (fire-and-forget to avoid delaying the request critical path)
     if (userProfile.firebase_uid) {
-      await setCachedProfile(userProfile.firebase_uid, req.user);
+      setCachedProfile(userProfile.firebase_uid, req.user);
     }
 
     next();

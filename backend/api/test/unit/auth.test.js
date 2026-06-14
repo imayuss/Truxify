@@ -830,12 +830,13 @@ describe('authenticate middleware - Redis caching', () => {
     const next = vi.fn();
 
     // Temporarily capture and ignore console.error to avoid test noise
-    const originalConsoleError = console.error;
-    console.error = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await authenticate(req, res, next);
-
-    console.error = originalConsoleError;
+    try {
+      await authenticate(req, res, next);
+    } finally {
+      consoleSpy.mockRestore();
+    }
 
     expect(redisClientMock.get).toHaveBeenCalledWith('user:profile:error-firebase-uid');
     expect(next).toHaveBeenCalled();
