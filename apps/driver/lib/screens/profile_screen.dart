@@ -9,9 +9,11 @@ import '../data/mock_data.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/fcm_service.dart';
 import '../../core/supabase_config.dart';
 import 'package:truxify_shared/truxify_shared.dart' hide NotificationsScreen;
 import 'notifications_screen.dart';
+import 'package:http/http.dart' as http;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -931,7 +933,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () async {
               try {
                 if (SupabaseConfig.isConfigured) {
-                  await Supabase.instance.client.auth.signOut();
+                  final client = Supabase.instance.client;
+                  final session = client.auth.currentSession;
+                  final accessToken = session?.accessToken;
+                  final driverId = client.auth.currentUser?.id;
+
+                  if (accessToken != null && driverId != null) {
+                    const apiBaseUrl = String.fromEnvironment(
+                      'TRUXIFY_API_BASE_URL',
+                      defaultValue: 'http://localhost:5000',
+                    );
+                    try {
+                      await http.post(
+                        Uri.parse('$apiBaseUrl/api/auth/logout'),
+                        headers: <String, String>{
+                          'Content-Type': 'application/json',
+                          'Authorization': 'Bearer $accessToken',
+                          'x-user-id': driverId,
+                          'x-user-role': 'driver',
+                        },
+                      ).timeout(const Duration(seconds: 5));
+                    } catch (e) {
+                      debugPrint('Backend logout failed: $e');
+                    }
+                  }
+
+                  // Clear FCM token on logout
+                  await FcmService.clearToken();
+
+                  await client.auth.signOut();
                 }
 
                 if (!context.mounted) {

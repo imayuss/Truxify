@@ -12,6 +12,7 @@ import '../core/offline/cache/cache_manager.dart';
 import '../repositories/address_repository.dart';
 import '../repositories/payment_repository.dart';
 import '../services/profile_service.dart';
+import '../services/fcm_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_page_route.dart';
 import 'about_screen.dart';
@@ -309,7 +310,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _logout(BuildContext context) {
+  void _logout(BuildContext context) async {
+    try {
+      await _profileService.logout();
+    } catch (e) {
+      debugPrint('Logout error: $e');
+    }
+
+    if (!context.mounted) return;
+
+    await _cacheManager.open();
+    await _cacheManager.cacheProfile({});
     Navigator.of(context).pushAndRemoveUntil(
       AppPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
