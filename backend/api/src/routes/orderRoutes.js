@@ -676,16 +676,30 @@ router.post('/:id/bids/:bidId/accept', authenticate, requireRole(['customer']), 
     // Phase 1: Build unsigned deposit tx for customer to sign
     let depositTxData = null;
     if (driverWallet && customerWallet) {
-      const amountWei = ethers.parseEther((bid.bid_amount / 100).toFixed(2).toString());
-      const { txData } = await buildDepositTx(
-        order.order_display_id, customerWallet, driverWallet, amountWei,
-      );
-      if (txData) {
-        depositTxData = txData;
-        await supabase.from('orders').update({
-          escrow_booking_id: `escrow:${order.order_display_id}`,
-          escrow_status: 'funding',
-        }).eq('id', orderId);
+      const maticPerPaisa = parseFloat(process.env.ESCROW_MATIC_PER_PAISA || '0');
+      if (!maticPerPaisa || !isFinite(maticPerPaisa) || maticPerPaisa <= 0) {
+        logger.warn('[escrow] ESCROW_MATIC_PER_PAISA not configured — skipping escrow deposit.');
+      } else {
+        const maticAmount = (bid.bid_amount * maticPerPaisa).toFixed(18);
+        const maxEscrowMatic = Number.parseFloat(process.env.MAX_ESCROW_MATIC || '5');
+        if (!Number.isFinite(maxEscrowMatic) || maxEscrowMatic <= 0) {
+          logger.error('[escrow] MAX_ESCROW_MATIC is invalid — refusing deposit.');
+          return res.status(500).json({ error: 'Escrow configuration error. Please contact support.' });
+        }
+        if (Number.parseFloat(maticAmount) > maxEscrowMatic) {
+          return res.status(400).json({ error: 'Computed escrow amount exceeds safety cap. Check ESCROW_MATIC_PER_PAISA configuration.' });
+        }
+        const amountWei = ethers.parseEther(maticAmount);
+        const { txData } = await buildDepositTx(
+          order.order_display_id, customerWallet, driverWallet, amountWei,
+        );
+        if (txData) {
+          depositTxData = txData;
+          await supabase.from('orders').update({
+            escrow_booking_id: `escrow:${order.order_display_id}`,
+            escrow_status: 'funding',
+          }).eq('id', orderId);
+        }
       }
     }
 
