@@ -35,7 +35,7 @@ router.post('/logout', authenticate, async (req, res) => {
       ),
     ]);
   } catch (err) {
-    logger.warn({ uid, err: err?.message }, 'Cache invalidation skipped');
+    logger.warn(`[auth/logout] Cache invalidation skipped for uid=${uid}: ${err?.message}`);
   }
 
   // ── 2. Firebase refresh token revocation (optional) ────────────────
@@ -49,7 +49,7 @@ router.post('/logout', authenticate, async (req, res) => {
         ),
       ]);
     } catch (err) {
-      logger.error({ uid, err: err?.message }, 'Firebase token revocation failed');
+      logger.error(`[auth/logout] Firebase token revocation failed for uid=${uid}: ${err?.message}`);
     }
   }
 
