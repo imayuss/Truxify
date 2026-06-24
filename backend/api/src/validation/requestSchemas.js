@@ -144,8 +144,12 @@ export const registerDeviceSchema = z.object({
 }).passthrough();
 
 export const createTicketSchema = z.object({
-  subject: z.string().min(1, 'Subject is required').max(200, 'Subject must be 200 characters or fewer'),
-  category: z.string().min(1, 'Category is required').max(50, 'Category must be 50 characters or fewer'),
+  subject: z.string().transform((v) => v.trim()).pipe(
+    z.string().min(1, 'Subject is required').max(200, 'Subject must be 200 characters or fewer')
+  ),
+  category: z.string().transform((v) => v.trim()).pipe(
+    z.string().min(1, 'Category is required').max(50, 'Category must be 50 characters or fewer')
+  ),
   description: z.string().max(5000, 'Description must be 5000 characters or fewer').optional(),
 });
 
