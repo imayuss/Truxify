@@ -7,13 +7,15 @@ Future<void> setupTests() async {
   setupFirebaseCoreMocks();
 
   if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: 'mock-api-key',
-        appId: 'mock-app-id',
-        messagingSenderId: 'mock-sender-id',
-        projectId: 'mock-project-id',
-      ),
-    );
+    try {
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: 'mock-api-key',
+          appId: 'mock-app-id',
+          messagingSenderId: 'mock-sender-id',
+          projectId: 'mock-project-id',
+        ),
+      );
+    } on FirebaseException catch (_) {}
   }
 }
