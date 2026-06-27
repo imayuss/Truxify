@@ -293,6 +293,8 @@ async function isMessageRateLimited(ws) {
   } catch (err) {
     logger.error('[ws] Rate limit check error:', err.message);
     return false;
+  }
+
 const DRIVER_ONLINE_TIMEOUT_MS = parseInt(process.env.DRIVER_ONLINE_TIMEOUT_MS, 10) || 5 * 60 * 1000; // 5 minutes
 
 async function expireStaleDriverOnlineStatus() {
