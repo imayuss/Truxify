@@ -179,6 +179,7 @@ class HistoryOrderData {
     required this.driver,
     required this.truckNumber,
     required this.timeline,
+    this.blockchainTxHash,
   });
 
   final String orderId;
@@ -189,6 +190,7 @@ class HistoryOrderData {
   final String driver;
   final String truckNumber;
   final List<TimelineStepData> timeline;
+  final String? blockchainTxHash;
 }
 
 class TimelineStepData {

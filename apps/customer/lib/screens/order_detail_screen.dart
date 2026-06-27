@@ -132,6 +132,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             driver: driverName,
             truckNumber: truckNumber,
             timeline: parsedTimeline,
+            blockchainTxHash: orderMap['blockchain_tx_hash']?.toString(),
           );
 
           // Trigger rating flow if status becomes completed and rating dialog hasn't been shown yet
@@ -303,7 +304,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               const SizedBox(height: 10),
               const Text('Transaction hash'),
               const SizedBox(height: 6),
-              SelectableText('0x8ab9f2c7e9f5d41a3d0b7f4d2c0e91f9c7d48abca7712c4f2c1d8b7f9a1c0e55'),
+              SelectableText(_currentOrder.blockchainTxHash ?? 'Blockchain data pending'),
               const SizedBox(height: 16),
               PrimaryButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
             ],
