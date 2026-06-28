@@ -116,8 +116,6 @@ class _TripsScreenState extends State<TripsScreen> {
     }
   }
 
-  }
-
   Future<void> _completeCurrentStop(String tripId) async {
     final stops = _tripStopsByTripId[tripId] ?? [];
     final currentStop = stops.firstWhere(
