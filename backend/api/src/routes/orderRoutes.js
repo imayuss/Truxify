@@ -997,7 +997,7 @@ router.post('/:id/verify-delivery', authenticate, userLimiter, requireRole(['dri
     // Post-RPC verification: confirm the order was actually updated to payment_released
     const { data: verifiedOrder, error: verifyErr } = await supabase
       .from('orders')
-      .select('status')
+      .select('status, escrow_status, escrow_release_attempts')
       .eq('id', orderId)
       .maybeSingle();
 
@@ -1018,9 +1018,9 @@ router.post('/:id/verify-delivery', authenticate, userLimiter, requireRole(['dri
     await clearOtpState(orderId);
     // Escrow: release funds to driver after successful delivery verification
     let escrowReleased = false;
-    if (order.escrow_status === 'funded') {
+    if (verifiedOrder.escrow_status === 'funded') {
       const releaseAttemptedAt = new Date().toISOString();
-      const releaseAttempts = (order.escrow_release_attempts || 0) + 1;
+      const releaseAttempts = (verifiedOrder.escrow_release_attempts || 0) + 1;
       const { error: pendingErr } = await supabase.from('orders').update({
         escrow_status: 'release_pending',
         escrow_release_error: null,
