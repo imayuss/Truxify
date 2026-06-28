@@ -454,8 +454,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       headers: <String, String>{
                         'Content-Type': 'application/json',
                         if (token != null) 'Authorization': 'Bearer $token',
-                        'x-user-id': userId,
-                        'x-user-role': 'driver',
                       },
                       body: jsonEncode(<String, String>{
                         'wallet_address': address,
@@ -1097,8 +1095,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         headers: <String, String>{
                           'Content-Type': 'application/json',
                           'Authorization': 'Bearer $accessToken',
-                          'x-user-id': driverId,
-                          'x-user-role': 'driver',
                         },
                       ).timeout(const Duration(seconds: 5));
                     } catch (e) {
