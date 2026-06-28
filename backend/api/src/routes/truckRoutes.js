@@ -68,6 +68,7 @@ router.post('/', authenticate, requireRole(['driver']), userLimiter, validateBod
  * Returns all trucks owned by the authenticated driver.
  */
 router.get('/', authenticate, requireRole(['driver']), userLimiter, async (req, res) => {
+  const { name } = req.query;
   const { min_capacity, max_capacity } = req.query;
 
   try {
@@ -76,6 +77,8 @@ router.get('/', authenticate, requireRole(['driver']), userLimiter, async (req, 
       .select('id, name, number_plate, max_capacity_tons, created_at')
       .eq('owner_id', req.user.id);
 
+    if (name) {
+      query = query.ilike('name', `%${name}%`);
     if (min_capacity) {
       query = query.gte('max_capacity_tons', Number(min_capacity));
     }
