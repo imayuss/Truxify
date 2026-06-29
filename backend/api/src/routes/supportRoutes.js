@@ -449,7 +449,7 @@ router.get('/tickets/:id/comments', authenticate, userLimiter, async (req, res) 
       .from('support_ticket_comments')
       .select('id, ticket_id, user_id, user_name, message, created_at')
       .eq('ticket_id', ticketId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: isAscending })
       .range(offset, offset + limit - 1);
 
     if (commentsError) {

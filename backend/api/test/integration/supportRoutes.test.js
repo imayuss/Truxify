@@ -528,11 +528,11 @@ describe('Support Routes', () => {
       );
 
       const res = await request(buildApp())
-        .get('/api/support/tickets/t-123/comments?limit=1&offset=1')
+        .get('/api/support/tickets/t-123/comments?sort=desc')
         .set(CUSTOMER_HEADERS);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
+      expect(res.body).toHaveLength(2);
       expect(res.body[0].message).toBe('Second');
     });
   });
