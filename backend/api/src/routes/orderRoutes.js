@@ -24,7 +24,6 @@ import {
 } from '../validation/requestSchemas.js';
 import { awardReputationPoints } from '../services/reputation.js';
 import { predictDemand, predictPrice } from '../services/ml.js';
-import { changeDropSchema, cancelOrderSchema } from '../validation/requestSchemas.js';
 import {
   buildDepositTx,
   recordDepositTx,
@@ -137,6 +136,16 @@ const milestoneLimiter = rateLimit({
 const predictDemandLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: process.env.NODE_ENV === 'test' ? 1000 : 10,
+  keyGenerator: (req) => req.user?.id || 'unauthenticated',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many demand prediction requests. Please try again later.' },
+});
+
+// Rate limiter for telemetry endpoints
+const telemetryLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: process.env.NODE_ENV === 'test' ? 1000 : 30, // 30 requests per minute should be enough for telemetry
   keyGenerator: (req) => {
     if (!req.user || !req.user.id) {
       throw new Error('User is not authenticated');
@@ -145,7 +154,7 @@ const predictDemandLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many demand prediction requests. Please try again later.' },
+  message: { error: 'Too many telemetry requests. Please slow down.' },
 });
 
 /**
@@ -599,11 +608,9 @@ router.post('/:id/ratings', authenticate, userLimiter, requireRole(['customer'])
     const polygonAddress = driverDetails?.polygon_wallet_address ?? null;
 
     if (polygonAddress) {
-      try {
-        await awardReputationPoints(polygonAddress, stars);
-      } catch (repErr) {
+      awardReputationPoints(polygonAddress, stars).catch((repErr) => {
         logger.error('[reputation] On-chain reputation update failed:', repErr.message);
-      }
+      });
     } else {
       logger.warn(
         `[reputation] Driver ${order.driver_id} has no polygon_wallet_address — skipping on-chain update.`
@@ -983,7 +990,7 @@ router.post('/:id/verify-delivery', authenticate, userLimiter, requireRole(['dri
     }
 
     // Call complete_trip_tx RPC to atomically update trip, driver stats, wallet, earnings, order status, and timeline.
-    const { error: rpcErr } = await supabase.rpc('complete_trip_tx', {
+    const { data: tripData, error: rpcErr } = await supabase.rpc('complete_trip_tx', {
       p_order_id: orderId,
       p_otp_id: otpRecord.id,
     });
@@ -1060,15 +1067,17 @@ router.post('/:id/verify-delivery', authenticate, userLimiter, requireRole(['dri
           });
         }
 
-        if (order.driver_id) {
+        const driverId = tripData?.driver_id || order.driver_id;
+        const displayId = tripData?.order_display_id || order.order_display_id;
+        if (driverId) {
           const { error: walletErr } = await supabase
             .from('wallet_transactions')
             .update({
               tx_hash: txHash,
-              description: `Escrow payout for ${order.order_display_id}`,
+              description: `Escrow payout for ${displayId}`,
             })
-            .eq('driver_id', order.driver_id)
-            .eq('order_display_id', order.order_display_id)
+            .eq('driver_id', driverId)
+            .eq('order_display_id', displayId)
             .eq('txn_type', 'credit');
 
           if (walletErr) {
@@ -1152,12 +1161,17 @@ router.post('/:id/resend-otp', authenticate, userLimiter, requireRole(['driver']
 // ============================================================================
 // 15. CHANGE DROP (CUSTOMER)
 // ============================================================================
-router.put('/:id/change-drop', authenticate, userLimiter, requireRole(['customer']), validateParams(uuidParamSchema), validateBody(changeDropSchema), async (req, res) => {
+router.put('/:id/change-drop', authenticate, userLimiter, requireRole(['customer']), validateParams(paramIdSchema), validateBody(changeDropSchema), async (req, res) => {
   const orderId = req.params.id;
   const { drop_address, drop_lat, drop_lng } = req.body;
 
   try {
-    const { data: order, error: orderErr } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    let { data: order, error: orderErr } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    if (!order && !orderErr) {
+      const result = await supabase.from('orders').select('*').eq('order_display_id', orderId).maybeSingle();
+      order = result.data;
+      orderErr = result.error;
+    }
     if (orderErr) return res.status(500).json({ error: 'Failed to fetch order.', details: orderErr.message });
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
@@ -1251,12 +1265,17 @@ router.put('/:id/change-drop', authenticate, userLimiter, requireRole(['customer
 // ============================================================================
 // 16. CANCEL ORDER AND REFUND ESCROW (CUSTOMER)
 // ============================================================================
-router.post('/:id/cancel', authenticate, userLimiter, requireRole(['customer']), validateParams(uuidParamSchema), validateBody(cancelOrderSchema), async (req, res) => {
+router.post('/:id/cancel', authenticate, userLimiter, requireRole(['customer']), validateParams(paramIdSchema), validateBody(cancelOrderSchema), async (req, res) => {
   const orderId = req.params.id;
   const { reason = null } = req.body || {};
 
   try {
-    const { data: order, error: orderErr } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    let { data: order, error: orderErr } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    if (!order && !orderErr) {
+      const result = await supabase.from('orders').select('*').eq('order_display_id', orderId).maybeSingle();
+      order = result.data;
+      orderErr = result.error;
+    }
     if (orderErr) return res.status(500).json({ error: 'Failed to fetch order.', details: orderErr.message });
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
@@ -1453,13 +1472,19 @@ router.post('/:id/confirm-deposit', authenticate, userLimiter, requireRole(['cus
   try {
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('id, order_display_id, escrow_booking_id, escrow_status')
+      .select('id, order_display_id, customer_id, escrow_booking_id, escrow_status')
       .eq('id', orderId)
       .maybeSingle();
 
     if (fetchErr || !order) return res.status(404).json({ error: 'Order not found' });
+    if (order.customer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
+    }
     if (order.escrow_status !== 'funding') {
       return res.status(400).json({ error: 'Order is not in funding state' });
+    }
+    if (order.customer_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access Denied: You do not own this order.' });
     }
 
     const bookingId = order.escrow_booking_id || `escrow:${order.order_display_id}`;
@@ -1504,9 +1529,8 @@ router.post('/predict-demand', authenticate, userLimiter, requireRole(['customer
 // ============================================================================
 // 19. GET DRIVER LOCATION (CUSTOMER OR DRIVER)
 // ============================================================================
-router.get('/:id/driver-location', authenticate, userLimiter, requireRole(['customer', 'driver']), validateParams(uuidParamSchema), async (req, res) => {
+router.get('/:id/driver-location', authenticate, userLimiter, telemetryLimiter, requireRole(['customer', 'driver']), validateParams(uuidParamSchema), async (req, res) => {
   const orderId = req.params.id;
-
   try {
     // 1. Resolve order and check authentication / authorization
     const { data: order, error: orderErr } = await supabase
@@ -1569,7 +1593,7 @@ router.get('/:id/driver-location', authenticate, userLimiter, requireRole(['cust
 // 20. GET LIVE ROUTE GEOMETRY (CUSTOMER OR DRIVER)
 // ============================================================================
 
-router.get('/:id/route', authenticate, userLimiter, requireRole(['customer', 'driver']), validateParams(paramIdSchema), async (req, res) => {
+router.get('/:id/route', authenticate, userLimiter, telemetryLimiter, requireRole(['customer', 'driver']), validateParams(paramIdSchema), async (req, res) => {
   const orderId = req.params.id; // this is order_display_id from client
 
   try {
@@ -1610,7 +1634,7 @@ router.get('/:id/route', authenticate, userLimiter, requireRole(['customer', 'dr
 
     const latestTelemetry = await mongoDb
       .collection('telemetry')
-      .find({ driver_id: order.driver_id })
+      .find({ driver_id: order.driver_id, order_id: order.id })
       .sort({ timestamp: -1 })
       .limit(1)
       .toArray();
