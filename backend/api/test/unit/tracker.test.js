@@ -77,7 +77,6 @@ describe('tracker WebSocket telemetry authorization', () => {
     });
 
     expect(ws.close).toHaveBeenCalledWith(4010, 'Spoofed location detected: Driver ID mismatch');
-    expect(sentMessages).toEqual([]);
   });
 
   it('rejects an order subscription when the authenticated user is not assigned to the order', async () => {

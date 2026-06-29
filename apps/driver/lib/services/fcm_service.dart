@@ -65,9 +65,6 @@ class FcmService {
       headers: <String, String>{
         'Content-Type': 'application/json',
         if (accessToken != null && accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
-        'x-user-id': userId,
-        'x-user-role': 'driver',
-        if (fullName != null && fullName.isNotEmpty) 'x-user-name': fullName,
       },
       body: jsonEncode(<String, dynamic>{
         'fcmToken': token,
