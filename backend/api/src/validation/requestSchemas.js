@@ -52,11 +52,6 @@ export const createOrderSchema = z.object({
   special_requirements: z.string().max(500).optional().nullable(),
   payment_method_id: z.string().optional(),
   upi_id: z.string().regex(upiRegex, "Invalid UPI ID format").optional().or(z.literal('')).nullable(),
-  base_freight: z.any().optional(),
-  toll_estimate: z.any().optional(),
-  platform_fee: z.any().optional(),
-  total_amount: z.any().optional(),
-  estimated_price: z.any().optional(),
 }).strict();
 
 export const paramIdSchema = z.object({
