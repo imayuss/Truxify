@@ -162,11 +162,40 @@ export async function authenticate(req, res, next) {
     }
 
     if (!userProfile) {
+      // Check whether the profile exists but is deactivated (is_active=false).
+      // The main queries above filter on is_active=true, so null could mean
+      // missing OR deactivated. We distinguish here to give accurate errors.
+      let profileIsDeactivated = false;
+      if (supabaseUserId) {
+        const { data: inactive } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', supabaseUserId)
+          .eq('is_active', false)
+          .maybeSingle();
+        profileIsDeactivated = !!inactive;
+      } else if (firebaseUid && supabase) {
+        const { data: inactive } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('firebase_uid', firebaseUid)
+          .eq('is_active', false)
+          .maybeSingle();
+        profileIsDeactivated = !!inactive;
+      }
+
       if (firebaseUid) {
         try { await setCachedProfile(firebaseUid, { isActive: false }, TOMBSTONE_TTL_SECONDS); } catch (_) { logger.error('Cache set failed', _); }
       }
       if (supabaseUserId) {
         void setCachedSupabaseProfile(supabaseUserId, { isActive: false }, TOMBSTONE_TTL_SECONDS);
+      }
+
+      if (profileIsDeactivated) {
+        return res.status(403).json({
+          error: 'User profile is inactive.',
+          hint: 'Contact support to reactivate your account.'
+        });
       }
       return res.status(403).json({
         error: 'User profile not found in database.',
