@@ -44,6 +44,7 @@ const OTP_TTL_MINUTES = parseInt(process.env.OTP_TTL_MINUTES || '15', 10);
 const OTP_MAX_FAILED_ATTEMPTS = parseInt(process.env.OTP_MAX_FAILED_ATTEMPTS || '5', 10);
 const OTP_LOCKOUT_MINUTES = parseInt(process.env.OTP_LOCKOUT_MINUTES || '30', 10);
 const IN_MEMORY_OTP_MAP_MAX_SIZE = parseInt(process.env.IN_MEMORY_OTP_MAP_MAX_SIZE || '10000', 10);
+const DELIVERY_OTP_READY_STATUSES = new Set(['arriving']);
 
 const inMemoryOtpFailedAttempts = new Map();
 
@@ -990,6 +991,9 @@ router.post('/:id/verify-delivery', authenticate, userLimiter, requireRole(['dri
       .maybeSingle();
     if (orderErr || !order) return res.status(404).json({ error: 'Order not found.' });
     if (order.driver_id !== req.user.id) return res.status(403).json({ error: 'Access Denied: You are not assigned to this order.' });
+    if (!DELIVERY_OTP_READY_STATUSES.has(order.status)) {
+      return res.status(409).json({ error: 'Delivery OTP can only be verified after the shipment reaches the delivery location.' });
+    }
 
     const otpRecord = await getActiveDeliveryOtp(orderId);
     if (!otpRecord) {
@@ -1138,6 +1142,9 @@ router.post('/:id/resend-otp', authenticate, userLimiter, resendOtpLimiter, requ
     const terminalStatuses = ['delivered', 'cancelled', 'payment_released'];
     if (terminalStatuses.includes(order.status)) {
       return res.status(400).json({ error: 'Cannot resend OTP for a completed or cancelled order.' });
+    }
+    if (!DELIVERY_OTP_READY_STATUSES.has(order.status)) {
+      return res.status(409).json({ error: 'Delivery OTP can only be sent after the shipment reaches the delivery location.' });
     }
 
     const otp = crypto.randomInt(100000, 1000000).toString();
