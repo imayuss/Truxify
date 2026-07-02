@@ -829,10 +829,6 @@ router.post('/:id/bids/:bidId/accept', authenticate, userLimiter, requireRole(['
           } else {
             depositTxData = txData;
           }
-          await supabase.from('orders').update({
-            escrow_booking_id: bookingId,
-            escrow_status: 'funding',
-          }).eq('id', orderId);
         }
       }
     }
@@ -846,16 +842,19 @@ router.post('/:id/bids/:bidId/accept', authenticate, userLimiter, requireRole(['
     });
 
     if (rpcErr) {
-      // Rollback the pre-update so the order is not left in an impossible state
-      await supabase
-        .from('orders')
-        .update({ escrow_status: 'pending', escrow_booking_id: null })
-        .eq('id', orderId);
       return res.status(500).json({
         error: 'Failed to accept bid atomically.',
         details: rpcErr.message,
-        recovery: 'The pending escrow deposit has been voided. Please try again.'
       });
+    }
+
+    // Phase 3: Only after bid is accepted, write escrow pre-update to DB
+    if (depositTxData) {
+      const bookingId = bookingIdFromUuid(order.order_display_id);
+      await supabase.from('orders').update({
+        escrow_booking_id: bookingId,
+        escrow_status: 'funding',
+      }).eq('id', orderId);
     }
 
     res.json({
@@ -1496,6 +1495,17 @@ router.post('/:id/confirm-deposit', authenticate, userLimiter, requireRole(['cus
   const orderId = req.params.id;
   const { txHash } = req.body;
 
+  const lockKey = `deposit_lock:${orderId}`;
+  const lockTimeoutMs = 10000;
+  let lockValue = null;
+  if (redisClient) {
+    lockValue = crypto.randomUUID();
+    const acquired = await redisClient.set(lockKey, lockValue, 'PX', lockTimeoutMs, 'NX');
+    if (!acquired) {
+      return res.status(409).json({ error: 'Another deposit confirmation is in progress for this order. Please try again.' });
+    }
+  }
+
   try {
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
@@ -1511,6 +1521,14 @@ router.post('/:id/confirm-deposit', authenticate, userLimiter, requireRole(['cus
       return res.status(400).json({ error: 'Order is not in funding state' });
     }
 
+    const { data: customerProfile } = await supabase
+      .from('profiles')
+      .select('polygon_wallet_address')
+      .eq('id', req.user.id)
+      .maybeSingle();
+
+    const customerWallet = customerProfile?.polygon_wallet_address ?? null;
+
     const bookingId = order.escrow_booking_id || `escrow:${order.order_display_id}`;
     const result = await recordDepositTx(bookingId, txHash, customerWallet);
 
@@ -1520,7 +1538,7 @@ router.post('/:id/confirm-deposit', authenticate, userLimiter, requireRole(['cus
       escrow_status: 'funded',
       deposit_tx_hash: result.txHash,
       escrow_deposited_at: new Date().toISOString(),
-    }).eq('id', orderId);
+    }).eq('id', orderId).eq('escrow_status', 'funding');
 
     if (updateErr) {
       logger.error('[confirm-deposit] DB update failed:', updateErr.message);
@@ -1531,6 +1549,21 @@ router.post('/:id/confirm-deposit', authenticate, userLimiter, requireRole(['cus
   } catch (err) {
     logger.error('[confirm-deposit] Exception:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });
+  } finally {
+    if (redisClient && lockValue) {
+      const luaScript = `
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+          redis.call('DEL', KEYS[1])
+          return 1
+        end
+        return 0
+      `;
+      try {
+        await redisClient.eval(luaScript, 1, lockKey, lockValue);
+      } catch (err) {
+        logger.warn('[confirm-deposit] Failed to release deposit lock for key %s: %s', lockKey, err.message);
+      }
+    }
   }
 });
 

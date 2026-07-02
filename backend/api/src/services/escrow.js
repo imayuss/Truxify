@@ -113,6 +113,17 @@ export async function recordDepositTx(bookingId, txHash, expectedSenderAddress =
     return { error: 'Invalid transaction hash' };
   }
 
+  // Idempotency: check if this booking already has a funded escrow on-chain
+  try {
+    const escrow = await escrowContract.escrows(bookingId);
+    if (escrow && (escrow.status === 1 || Number(escrow.status) === 1)) {
+      logger.info(`[escrow] Booking ${bookingId} already has a funded escrow — idempotency skip.`);
+      return { txHash: txHash, bookingId, alreadyFunded: true };
+    }
+  } catch (err) {
+    logger.warn(`[escrow] Failed to check existing escrow status for ${bookingId}: ${err.message}, proceeding.`);
+  }
+
   const provider = escrowContract.runner.provider;
   const receipt = await provider.waitForTransaction(txHash, 1);
   if (!receipt || receipt.status === 0) {
