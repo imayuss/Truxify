@@ -426,8 +426,18 @@ router.get('/load-offers/en-route', authenticate, userLimiter, async (req, res) 
 // ============================================================================
 router.get('/history', authenticate, userLimiter, requireRole(['customer']), async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const rawPage = req.query.page;
+    const rawLimit = req.query.limit;
+    const parsedPage = parseInt(rawPage, 10);
+    const parsedLimit = parseInt(rawLimit, 10);
+    if (rawPage !== undefined && (!Number.isInteger(parsedPage) || parsedPage < 1)) {
+      return res.status(400).json({ error: 'page must be a positive integer' });
+    }
+    if (rawLimit !== undefined && (!Number.isInteger(parsedLimit) || parsedLimit < 1)) {
+      return res.status(400).json({ error: 'limit must be a positive integer' });
+    }
+    const page = parsedPage || 1;
+    const limit = Math.min(100, Math.max(1, parsedLimit || 10));
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
