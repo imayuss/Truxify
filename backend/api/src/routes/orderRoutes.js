@@ -1014,7 +1014,14 @@ router.post('/:id/verify-delivery', authenticate, userLimiter, requireRole(['dri
     }
 
     const submittedHash = crypto.createHash('sha256').update(String(otp)).digest('hex');
-    if (otpRecord.otp_hash !== submittedHash) {
+    let isMatch = false;
+    if (otpRecord.otp_hash && otpRecord.otp_hash.length === submittedHash.length) {
+      isMatch = crypto.timingSafeEqual(
+        Buffer.from(otpRecord.otp_hash, 'hex'),
+        Buffer.from(submittedHash, 'hex')
+      );
+    }
+    if (!isMatch) {
       const count = await recordOtpFailure(orderId);
       const remaining = Math.max(0, OTP_MAX_FAILED_ATTEMPTS - count);
       const message = remaining > 0
