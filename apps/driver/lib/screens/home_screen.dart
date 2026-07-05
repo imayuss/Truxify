@@ -197,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _todayEarnings = results[0] as EarningsDailyModel?;
-        final stats = results[1] as Map<String, dynamic>;
+        final stats = results[1] as Map<String, dynamic>? ?? <String, dynamic>{};
         _driverRating = (stats['rating'] as num?)?.toDouble();
         _tripHistory = historyList;
         _isLoadingMetrics = false;
