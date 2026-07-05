@@ -11,6 +11,12 @@ import logger from '../middleware/logger.js';
 
 const router = express.Router();
 
+// GET /api/trucks/types
+router.get('/types', authenticate, userLimiter, (req, res) => {
+  return res.json({
+    types: ['mini-truck', 'flatbed', 'box-truck', 'refrigerated', 'container']
+  });
+});
 function parseCapacityFilter(value, field) {
   if (value === undefined) return { value: undefined };
   if (typeof value !== 'string' || value.trim() === '') {
