@@ -97,8 +97,7 @@ export async function predictPrice({
     routeOrigin = '',
     routeDestination = '',
 } = {}) {
-    // Uses fetch() to call ML service — confirmed present (fix for #1799)
-    const url = `${getBaseUrl()}/predict`;
+    const url = `${getBaseUrl()}/predict/price`;
 
     const payload = {
         distance_km: distanceKm,
