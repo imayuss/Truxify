@@ -109,6 +109,8 @@ const CATEGORY_DESCRIPTIONS = {
  * @returns {object} 200 - Object containing categories array, labels map, SLA hours map, and descriptions map
  */
 router.get('/categories', (_req, res) => {
+  // Optimize: Add caching header for static support categories
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   res.json({
     categories: VALID_CATEGORIES,
     labels: CATEGORY_LABELS,
