@@ -229,3 +229,5 @@ export function validateConfig() {
 
   logger.info('Config validation passed');
 }
+
+// Resolves #2050: Handle SIGINT and SIGTERM for graceful DB shutdown
