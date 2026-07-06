@@ -4,10 +4,10 @@ import CircuitBreaker from 'opossum';
 // Single source of truth for ML engine base URL
 const DEFAULT_ML_ENGINE_URL = 'http://localhost:8001';
 
-const mlBreaker = new CircuitBreaker(async (url, options) => {
+export const mlBreaker = new CircuitBreaker(async (url, options) => {
     const response = await fetch(url, options);
     if (response.status >= 500) {
-        throw new Error(`[ML] Service unavailable (${response.status})`);
+        throw new Error(`[ML] Request failed (${response.status})`);
     }
     return response;
 }, {
@@ -23,6 +23,12 @@ mlBreaker.fallback(() => {
 // Startup validation
 if (!process.env.ML_API_KEY) {
     logger.warn('[ML] WARNING: ML_API_KEY is not set. ML features will be unavailable.');
+
+function guardMlApiKey() {
+  if (!process.env.ML_API_KEY) {
+    throw new Error("[ML] ML_API_KEY is not configured. ML features are unavailable.");
+  }
+}
 }
 
 /**
@@ -51,8 +57,8 @@ async function handleResponse(response) {
 
     try {
         return JSON.parse(text);
-    } catch {
-        throw new Error('[ML] Invalid JSON response from ML engine');
+    } catch (err) {
+        throw new Error(`[ML] Invalid JSON response from ML engine: ${err.message}`);
     }
 }
 
@@ -73,6 +79,7 @@ function getBaseUrl() {
  * @returns {Promise<object>}
  */
 export async function predictDemand(features = {}) {
+  guardMlApiKey();
     const url = `${getBaseUrl()}/predict/demand`;
 
     const response = await mlBreaker.fire(url, {
@@ -97,7 +104,7 @@ export async function predictPrice({
     routeOrigin = '',
     routeDestination = '',
 } = {}) {
-    const url = `${getBaseUrl()}/predict`;
+    const url = `${getBaseUrl()}/predict/price`;
 
     const payload = {
         distance_km: distanceKm,
@@ -126,7 +133,8 @@ export async function predictPrice({
  * @returns {Promise<{estimated_minutes: number, confidence: number}>}
  */
 export async function predictEta(origin, destination, traffic = {}, weather = {}) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/predict/eta`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -143,7 +151,8 @@ export async function predictEta(origin, destination, traffic = {}, weather = {}
  * @returns {Promise<{matches: Array}>}
  */
 export async function matchBilateral(shipmentData) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/match/bilateral`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -161,7 +170,8 @@ export async function matchBilateral(shipmentData) {
  * @returns {Promise<{estimated_profit: number, confidence: number}>}
  */
 export async function predictDriverProfit(driverId, route) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/predict/driver-profit`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -178,7 +188,8 @@ export async function predictDriverProfit(driverId, route) {
  * @returns {Promise<{bins: Array, efficiency: number}>}
  */
 export async function optimisePacking(items) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/optimise/packing`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -196,7 +207,8 @@ export async function optimisePacking(items) {
  * @returns {Promise<{loads: Array, total_revenue: number}>}
  */
 export async function recommendLoads(truckId, region) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/recommend/loads`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -213,7 +225,8 @@ export async function recommendLoads(truckId, region) {
  * @returns {Promise<{trucks: Array, average_price: number}>}
  */
 export async function recommendTrucks(loadId) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/recommend/trucks`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -230,7 +243,8 @@ export async function recommendTrucks(loadId) {
  * @returns {Promise<{trust_score: number, factors: object}>}
  */
 export async function scoreTrust(entityId) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/score/trust`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -247,7 +261,8 @@ export async function scoreTrust(entityId) {
  * @returns {Promise<{loads: Array, revenue: number}>}
  */
 export async function matchDeadhead(truckId) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/match/deadhead`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -264,7 +279,8 @@ export async function matchDeadhead(truckId) {
  * @returns {Promise<{adjustments: Array, fuel_saving: number}>}
  */
 export async function optimiseMidTrip(routeData) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/optimise/mid-trip`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -281,7 +297,8 @@ export async function optimiseMidTrip(routeData) {
  * @returns {Promise<{status: string, model_version: string}>}
  */
 export async function trainDemandModel(force = false) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/train/demand`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -298,7 +315,8 @@ export async function trainDemandModel(force = false) {
  * @returns {Promise<{status: string, model_version: string}>}
  */
 export async function trainPriceModel(force = false) {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/train/price`;
   const response = await mlBreaker.fire(url, {
     method: 'POST',
@@ -314,7 +332,8 @@ export async function trainPriceModel(force = false) {
  * @returns {Promise<{models: Array}>}
  */
 export async function listModels() {
-  const baseUrl = process.env.ML_ENGINE_URL || DEFAULT_ML_ENGINE_URL;
+  guardMlApiKey();
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/models`;
   const response = await mlBreaker.fire(url, {
     method: 'GET',
