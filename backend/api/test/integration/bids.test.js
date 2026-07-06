@@ -54,14 +54,8 @@ describe('Bid Routes', () => {
     mockBuildDepositTx.mockReset();
     mockRecordDepositTx.mockReset();
     mockEscrowRefund.mockReset();
-    mockBuildDepositTx.mockResolvedValue({
-      txData: {
-        to: '0x0000000000000000000000000000000000000000',
-        data: '0x',
-        value: '0x0',
-      },
-      bookingId: 'escrow:MOCK',
-    });
+    mockEscrowDeposit.mockResolvedValue({ txHash: '0xdefaultescrow' });
+    mockEscrowRefund.mockResolvedValue({ txHash: '0xdefaultrefund' });
   });
 
   it('POST /:id/bids rejects invalid amount', async () => {
@@ -645,11 +639,11 @@ describe('Bid Routes', () => {
     });
 
     m.store.profiles.push(
-      { id: 'customer-1', full_name: 'Customer One', polygon_wallet_address: '0xCustomerWallet' },
-      { id: 'driver-1', full_name: 'Driver One' },
+      { id: 'customer-1', full_name: 'Customer One', polygon_wallet_address: '0x1234567890abcdef1234567890abcdef12345678' },
+      { id: 'driver-1', full_name: 'Driver One' }
     );
-    m.store.driver_details.push({ user_id: 'driver-1', rating: 4.9, truck_id: null, polygon_wallet_address: '0xDriverWallet' });
-    mockBuildDepositTx.mockResolvedValue({ txData: '0xdeadbeef' });
+    m.store.driver_details.push({ user_id: 'driver-1', rating: 4.9, truck_id: null, polygon_wallet_address: '0xAbcdef1234567890Abcdef1234567890Abcdef12' });
+
     m.programRpcError('Load offer is no longer available');
 
     const app = buildApp();
@@ -685,11 +679,11 @@ describe('Bid Routes', () => {
     });
 
     m.store.profiles.push(
-      { id: 'customer-1', full_name: 'Customer One', polygon_wallet_address: '0xCustomerWallet' },
-      { id: 'driver-1', full_name: 'Driver One' },
+      { id: 'customer-1', full_name: 'Customer One', polygon_wallet_address: '0x1234567890abcdef1234567890abcdef12345678' },
+      { id: 'driver-1', full_name: 'Driver One' }
     );
-    m.store.driver_details.push({ user_id: 'driver-1', rating: 4.9, truck_id: null, polygon_wallet_address: '0xDriverWallet' });
-    mockBuildDepositTx.mockResolvedValue({ txData: '0xdeadbeef' });
+    m.store.driver_details.push({ user_id: 'driver-1', rating: 4.9, truck_id: null, polygon_wallet_address: '0xAbcdef1234567890Abcdef1234567890Abcdef12' });
+
     m.programRpcError('Order is no longer pending');
 
     const app = buildApp();
