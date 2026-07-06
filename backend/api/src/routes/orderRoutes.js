@@ -683,6 +683,14 @@ router.post('/:id/ratings', authenticate, userLimiter, requireRole(['customer'])
       // Fire-and-forget: blockchain confirmation must never block the HTTP response.
       void awardReputationPoints(polygonAddress, stars).catch((repErr) => {
         logger.error('[reputation] On-chain reputation update failed:', repErr.message);
+        supabase.from('reputation_failures').insert({
+          driver_wallet: polygonAddress,
+          stars,
+          rating_id: ratingData?.id ?? null,
+          failed_at: new Date().toISOString(),
+          retry_count: 0,
+          last_error: repErr.message,
+        }).then().catch(() => {});
       });
     } else {
       logger.warn(
