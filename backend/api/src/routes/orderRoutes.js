@@ -185,7 +185,6 @@ const telemetryLimiter = rateLimit({
 const resendOtpLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: process.env.NODE_ENV === 'test' ? 1000 : 5,
-  keyGenerator: (req) => req.user?.id || 'unauthenticated',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || 'unknown',
@@ -197,7 +196,6 @@ const resendOtpLimiter = rateLimit({
 const changeDropLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: process.env.NODE_ENV === 'test' ? 1000 : 5,
-  keyGenerator: (req) => req.user?.id || 'unauthenticated',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || 'unknown',
